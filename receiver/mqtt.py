@@ -56,14 +56,8 @@ def on_disconnect(client, userdata, rc):
 print("🚀 Iniciando cliente MQTT...", settings.MQTT_HOST, settings.MQTT_PORT)
 
 try:
-    # Cliente configurado para WebSockets (puerto 8082)
-    client = mqtt.Client(
-        client_id=settings.MQTT_USER,
-        transport="websockets"
-    )
-
-    # Ruta WebSocket típica (ajustar si tu broker usa otra)
-    client.ws_set_options(path="/")
+    # ✅ MQTT TCP normal (Mosquitto en 8082 sin websockets)
+    client = mqtt.Client(client_id=settings.MQTT_USER)
 
     client.on_connect = on_connect
     client.on_message = on_message
@@ -77,7 +71,6 @@ try:
         )
 
     client.username_pw_set(settings.MQTT_USER, settings.MQTT_PASSWORD)
-
     client.connect(settings.MQTT_HOST, settings.MQTT_PORT, keepalive=60)
 
     # Loop bloqueante (mantiene conexión viva)
