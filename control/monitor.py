@@ -9,7 +9,9 @@ import schedule
 import time
 from django.conf import settings
 
-client = mqtt.Client(settings.MQTT_USER_PUB)
+# Client ID único para no chocar con el receptor (admin/admin2 en el broker)
+client = mqtt.Client(client_id=settings.MQTT_USER_PUB + "_control")
+mqtt_connected = False
 
 
 def analyze_data():
@@ -52,13 +54,13 @@ def analyze_data():
         if alert:
             message = "ALERT {} {} {}".format(variable, min_value, max_value)
             topic = '{}/{}/{}/{}/in'.format(country, state, city, user)
-            if not client.is_connected():
+            if not mqtt_connected:
                 try:
                     client.reconnect()
-                    time.sleep(0.5)
-                except Exception:
-                    pass
-            if client.is_connected():
+                    time.sleep(1)
+                except Exception as e:
+                    print("Reconnect falló:", e)
+            if mqtt_connected:
                 client.publish(topic, message)
                 print(timezone.now(), "Sending alert to {} {}".format(topic, variable))
             else:
@@ -102,13 +104,13 @@ def evaluate_led_event():
             city = item['station__location__city__name']
             user = item['station__user__username']
             topic = '{}/{}/{}/{}/in'.format(country, state, city, user)
-            if not client.is_connected():
+            if not mqtt_connected:
                 try:
                     client.reconnect()
-                    time.sleep(0.5)
-                except Exception:
-                    pass
-            if client.is_connected():
+                    time.sleep(1)
+                except Exception as e:
+                    print("Reconnect falló:", e)
+            if mqtt_connected:
                 client.publish(topic, 'LED_ON')
                 print(timezone.now(), "LED_ON enviado a", topic, "(temperatura_promedio = {:.1f} °C)".format(temp_prom))
                 sent += 1
@@ -122,28 +124,34 @@ def on_connect(client, userdata, flags, rc):
     '''
     Función que se ejecuta cuando se conecta al bróker.
     '''
-    print("Conectando al broker MQTT...", mqtt.connack_string(rc))
+    global mqtt_connected
+    if rc == 0:
+        mqtt_connected = True
+        print("Conectado al broker MQTT correctamente.")
+    else:
+        mqtt_connected = False
+        print("Error al conectar al broker MQTT:", mqtt.connack_string(rc))
 
 
 def on_disconnect(client: mqtt.Client, userdata, rc):
     '''
     Función que se ejecuta cuando se desconecta del broker.
-    Intenta reconectar al bróker.
     '''
-    print("Desconectado con mensaje:" + str(mqtt.connack_string(rc)))
-    print("Reconectando...")
-    client.reconnect()
+    global mqtt_connected
+    mqtt_connected = False
+    print("Desconectado del broker:", mqtt.connack_string(rc))
 
 
 def setup_mqtt():
     '''
-    Configura el cliente MQTT para conectarse al broker.
+    Configura el cliente MQTT y se conecta al broker. Usa loop_start() para
+    mantener la conexión en un hilo en segundo plano.
     '''
-
+    global client, mqtt_connected
+    mqtt_connected = False
     print("Iniciando cliente MQTT...", settings.MQTT_HOST, settings.MQTT_PORT)
-    global client
     try:
-        client = mqtt.Client(settings.MQTT_USER_PUB)
+        client = mqtt.Client(client_id=settings.MQTT_USER_PUB + "_control")
         client.on_connect = on_connect
         client.on_disconnect = on_disconnect
 
@@ -153,10 +161,18 @@ def setup_mqtt():
 
         client.username_pw_set(settings.MQTT_USER_PUB,
                                settings.MQTT_PASSWORD_PUB)
-        client.connect(settings.MQTT_HOST, settings.MQTT_PORT)
-
+        client.connect(settings.MQTT_HOST, settings.MQTT_PORT, keepalive=60)
+        # Mantener la conexión en un hilo (importante: sin esto la conexión se pierde)
+        client.loop_start()
+        # Dar tiempo a que on_connect se ejecute
+        for _ in range(20):
+            if mqtt_connected:
+                break
+            time.sleep(0.5)
+        if not mqtt_connected:
+            print("Aviso: conexión MQTT aún no confirmada. ¿El broker acepta usuario", settings.MQTT_USER_PUB, "? ¿La EC2 puede alcanzar", settings.MQTT_HOST, ":", settings.MQTT_PORT, "?")
     except Exception as e:
-        print('Ocurrió un error al conectar con el bróker MQTT:', e)
+        print('Error al conectar con el bróker MQTT:', e)
 
 
 def start_cron():
@@ -168,11 +184,10 @@ def start_cron():
     schedule.every(2).minutes.do(evaluate_led_event)
     print("Servicio de control iniciado (eventos cada 2 min)")
     while 1:
-        if client.is_connected():
-            client.loop(timeout=0.1)
-        else:
+        if not mqtt_connected:
             try:
                 client.reconnect()
+                time.sleep(1)
             except Exception:
                 pass
         schedule.run_pending()
