@@ -2,6 +2,7 @@ from argparse import ArgumentError
 import ssl
 from django.db.models import Avg
 from datetime import timedelta, datetime
+from django.utils import timezone
 from receiver.models import Data, Measurement
 import paho.mqtt.client as mqtt
 import schedule
@@ -19,7 +20,7 @@ def analyze_data():
     print("Calculando alertas...")
 
     data = Data.objects.filter(
-        base_time__gte=datetime.now() - timedelta(hours=1))
+        base_time__gte=timezone.now() - timedelta(hours=1))
     aggregation = data.annotate(check_value=Avg('avg_value')) \
         .select_related('station', 'measurement') \
         .select_related('station__user', 'station__location') \
@@ -51,7 +52,7 @@ def analyze_data():
         if alert:
             message = "ALERT {} {} {}".format(variable, min_value, max_value)
             topic = '{}/{}/{}/{}/in'.format(country, state, city, user)
-            print(datetime.now(), "Sending alert to {} {}".format(topic, variable))
+            print(timezone.now(), "Sending alert to {} {}".format(topic, variable))
             client.publish(topic, message)
             alerts += 1
 
@@ -73,7 +74,7 @@ def evaluate_led_event():
 
     # Consulta a la BD: promedio de temperatura por estación en la última hora
     data = Data.objects.filter(
-        base_time__gte=datetime.now() - timedelta(hours=1),
+        base_time__gte=timezone.now() - timedelta(hours=1),
         measurement__name='temperatura'
     )
     aggregation = data.values(
@@ -93,7 +94,7 @@ def evaluate_led_event():
             user = item['station__user__username']
             topic = '{}/{}/{}/{}/in'.format(country, state, city, user)
             client.publish(topic, 'LED_ON')
-            print(datetime.now(), "LED_ON enviado a", topic, "(temperatura_promedio = {:.1f} °C)".format(temp_prom))
+            print(timezone.now(), "LED_ON enviado a", topic, "(temperatura_promedio = {:.1f} °C)".format(temp_prom))
             sent += 1
 
     print(sent, "comandos LED_ON enviados")
@@ -142,12 +143,12 @@ def setup_mqtt():
 
 def start_cron():
     '''
-    Inicia el cron que se encarga de ejecutar la función analyze_data cada 5 minutos.
+    Inicia el cron: analyze_data y evaluate_led_event cada 2 minutos.
     '''
     print("Iniciando cron...")
-    schedule.every(5).minutes.do(analyze_data)
-    schedule.every(5).minutes.do(evaluate_led_event)
-    print("Servicio de control iniciado")
+    schedule.every(2).minutes.do(analyze_data)
+    schedule.every(2).minutes.do(evaluate_led_event)
+    print("Servicio de control iniciado (eventos cada 2 min)")
     while 1:
         schedule.run_pending()
         time.sleep(1)
