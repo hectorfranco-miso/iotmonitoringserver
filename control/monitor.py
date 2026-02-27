@@ -59,6 +59,46 @@ def analyze_data():
     print(alerts, "alertas enviadas")
 
 
+# Umbral de temperatura (ºC) para activar el evento LED
+LED_EVENT_TEMP_THRESHOLD = 28.0
+
+
+def evaluate_led_event():
+    """
+    Nuevo evento: si temperatura_promedio (última hora, por estación) > umbral,
+    se envía LED_ON al dispositivo. La temperatura_promedio se obtiene por consulta a la BD.
+    Acción: el dispositivo parpadea el LED y muestra "Evento: LED activado" en la OLED.
+    """
+    print("Evaluando evento LED (temperatura_promedio > {} °C)...".format(LED_EVENT_TEMP_THRESHOLD))
+
+    # Consulta a la BD: promedio de temperatura por estación en la última hora
+    data = Data.objects.filter(
+        base_time__gte=datetime.now() - timedelta(hours=1),
+        measurement__name='temperatura'
+    )
+    aggregation = data.values(
+        'station__user__username',
+        'station__location__city__name',
+        'station__location__state__name',
+        'station__location__country__name'
+    ).annotate(temperatura_promedio=Avg('avg_value'))
+
+    sent = 0
+    for item in aggregation:
+        temp_prom = item.get('temperatura_promedio')
+        if temp_prom is not None and temp_prom > LED_EVENT_TEMP_THRESHOLD:
+            country = item['station__location__country__name']
+            state = item['station__location__state__name']
+            city = item['station__location__city__name']
+            user = item['station__user__username']
+            topic = '{}/{}/{}/{}/in'.format(country, state, city, user)
+            client.publish(topic, 'LED_ON')
+            print(datetime.now(), "LED_ON enviado a", topic, "(temperatura_promedio = {:.1f} °C)".format(temp_prom))
+            sent += 1
+
+    print(sent, "comandos LED_ON enviados")
+
+
 def on_connect(client, userdata, flags, rc):
     '''
     Función que se ejecuta cuando se conecta al bróker.
@@ -106,6 +146,7 @@ def start_cron():
     '''
     print("Iniciando cron...")
     schedule.every(5).minutes.do(analyze_data)
+    schedule.every(5).minutes.do(evaluate_led_event)
     print("Servicio de control iniciado")
     while 1:
         schedule.run_pending()
