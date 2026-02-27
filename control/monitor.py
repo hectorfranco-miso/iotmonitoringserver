@@ -52,8 +52,17 @@ def analyze_data():
         if alert:
             message = "ALERT {} {} {}".format(variable, min_value, max_value)
             topic = '{}/{}/{}/{}/in'.format(country, state, city, user)
-            print(timezone.now(), "Sending alert to {} {}".format(topic, variable))
-            client.publish(topic, message)
+            if not client.is_connected():
+                try:
+                    client.reconnect()
+                    time.sleep(0.5)
+                except Exception:
+                    pass
+            if client.is_connected():
+                client.publish(topic, message)
+                print(timezone.now(), "Sending alert to {} {}".format(topic, variable))
+            else:
+                print(timezone.now(), "NO enviado (desconectado): alert a", topic)
             alerts += 1
 
     print(len(aggregation), "dispositivos revisados")
@@ -93,9 +102,18 @@ def evaluate_led_event():
             city = item['station__location__city__name']
             user = item['station__user__username']
             topic = '{}/{}/{}/{}/in'.format(country, state, city, user)
-            client.publish(topic, 'LED_ON')
-            print(timezone.now(), "LED_ON enviado a", topic, "(temperatura_promedio = {:.1f} °C)".format(temp_prom))
-            sent += 1
+            if not client.is_connected():
+                try:
+                    client.reconnect()
+                    time.sleep(0.5)
+                except Exception:
+                    pass
+            if client.is_connected():
+                client.publish(topic, 'LED_ON')
+                print(timezone.now(), "LED_ON enviado a", topic, "(temperatura_promedio = {:.1f} °C)".format(temp_prom))
+                sent += 1
+            else:
+                print(timezone.now(), "NO enviado LED_ON (desconectado):", topic)
 
     print(sent, "comandos LED_ON enviados")
 
@@ -150,5 +168,12 @@ def start_cron():
     schedule.every(2).minutes.do(evaluate_led_event)
     print("Servicio de control iniciado (eventos cada 2 min)")
     while 1:
+        if client.is_connected():
+            client.loop(timeout=0.1)
+        else:
+            try:
+                client.reconnect()
+            except Exception:
+                pass
         schedule.run_pending()
         time.sleep(1)
