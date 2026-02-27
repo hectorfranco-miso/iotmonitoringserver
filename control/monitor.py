@@ -60,7 +60,7 @@ def analyze_data():
 
 
 # Umbral de temperatura (ºC) para activar el evento LED
-LED_EVENT_TEMP_THRESHOLD = 28.0
+LED_EVENT_TEMP_THRESHOLD = 22.0
 
 
 def evaluate_led_event():
