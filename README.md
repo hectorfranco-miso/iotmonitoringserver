@@ -173,22 +173,9 @@ void loop() {
 
 ## 4. Configuración física (NodeMCU, protoboard y actuadores)
 
-*Aquí puedes pegar fotos y una breve descripción de tu montaje.*
-
-### 4.1 Esquema de conexiones
-
-Incluye una foto o diagrama de tu configuración (NodeMCU, protoboard, LED, OLED, DHT11).
-
-<!-- 
-Ejemplo de cómo insertar una imagen cuando la tengas:
-![Descripción](docs/imagen-nodemcu-protoboard.png)
--->
-
-**Espacio para imagen 1:** Vista general del NodeMCU y la protoboard.
-
 ---
 
-### 4.2 Conexiones utilizadas
+### 4.1 Conexiones utilizadas
 
 | Componente | Conexión en NodeMCU |
 |------------|---------------------|
@@ -196,33 +183,3 @@ Ejemplo de cómo insertar una imagen cuando la tengas:
 | OLED       | D1 (SCL), D2 (SDA), 3V3, GND |
 | LED        | D6 (ánodo con resistencia ~220Ω) y GND |
 
-**Espacio para imagen 2:** Detalle del LED en la protoboard (patilla larga/corta y resistencia).
-
----
-
-### 4.3 Evidencia del evento en funcionamiento
-
-**Espacio para imagen 3:** OLED mostrando *"Evento: LED activado"* cuando se dispara el evento.
-
-**Espacio para imagen 4:** LED parpadeando durante el evento (opcional).
-
----
-
-## 5. Redespliegue y pruebas
-
-- La aplicación del servidor (incluido el servicio de control con `evaluate_led_event`) se redesplegó en la infraestructura de nube.
-- Se verificó que:
-  - La consulta a la BD devuelve la temperatura promedio por estación.
-  - Cuando la temperatura promedio supera 22 °C, se envía `LED_ON` al tópico correcto.
-  - El dispositivo recibe el mensaje, parpadea el LED en D6 y muestra *"Evento: LED activado"* en la OLED durante 60 segundos.
-
----
-
-## 6. Repositorio
-
-**Enlace al repositorio GitHub (fork del tutorial):**  
-*(pega aquí la URL de tu repositorio)*
-
----
-
-*Documento preparado para el reto de la capa de aplicación (lógica). Las modificaciones descritas corresponden únicamente al nuevo evento con consulta a BD y actuador (LED + OLED).*
