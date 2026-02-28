@@ -2,6 +2,7 @@ from datetime import datetime
 import traceback
 from django.contrib.auth.models import User
 from receiver.models import Measurement, Station, Data, Location, City, State, Country
+from receiver.utils import get_coordinates
 from django.db.models import Avg, Max, Min, Sum
 import dateutil.relativedelta
 
@@ -225,6 +226,8 @@ def get_map_context(request):
 
     for location in locations:
         stations = Station.objects.filter(location=location)
+        if not selectedMeasure:
+            continue
         locationData = Data.objects.filter(
             station__in=stations, measurement__name=selectedMeasure.name, time__gte=start_ts, time__lte=end_ts,
         )
@@ -233,15 +236,30 @@ def get_map_context(request):
         minVal = locationData.aggregate(Min("min_value"))["min_value__min"]
         maxVal = locationData.aggregate(Max("max_value"))["max_value__max"]
         avgVal = locationData.aggregate(Avg("avg_value"))["avg_value__avg"]
+        lat = location.lat
+        lng = location.lng
+        if lat is None or lng is None:
+            try:
+                lat, lng = get_coordinates(
+                    location.city.name, location.state.name, location.country.name
+                )
+                if lat and lng:
+                    location.lat = lat
+                    location.lng = lng
+                    location.save()
+            except Exception:
+                pass
+        if lat is None or lng is None:
+            continue
         data.append(
             {
                 "name": f"{location.city.name}, {location.state.name}, {location.country.name}",
-                "lat": location.lat,
-                "lng": location.lng,
+                "lat": float(lat),
+                "lng": float(lng),
                 "population": stations.count(),
-                "min": minVal if minVal != None else 0,
-                "max": maxVal if maxVal != None else 0,
-                "avg": round(avgVal if avgVal != None else 0, 2),
+                "min": minVal if minVal is not None else 0,
+                "max": maxVal if maxVal is not None else 0,
+                "avg": round(float(avgVal) if avgVal is not None else 0, 2),
             }
         )
 
