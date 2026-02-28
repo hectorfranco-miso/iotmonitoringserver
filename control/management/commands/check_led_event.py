@@ -3,7 +3,12 @@ Comando para verificar si hay datos de temperatura y si se dispararía el evento
 Uso: python manage.py check_led_event
       python manage.py check_led_event --send          # envía LED_ON si temp > umbral
       python manage.py check_led_event --send --force # envía LED_ON sin importar la temperatura (prueba)
+
+El comando usa un client_id distinto al de start_control para no desconectar el broker.
 """
+import time
+import paho.mqtt.client as mqtt
+from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db.models import Avg
 from datetime import timedelta, datetime
@@ -11,6 +16,24 @@ from django.utils import timezone
 from receiver.models import Data, Station
 
 from control.monitor import LED_EVENT_TEMP_THRESHOLD, evaluate_led_event
+
+
+def send_led_on_to_topics(topics):
+    """
+    Envía LED_ON a los tópicos usando un cliente MQTT propio (client_id distinto a start_control).
+    Así no se desconecta el proceso start_control que ya está corriendo.
+    """
+    client_id = settings.MQTT_USER_PUB + "_check_led"
+    c = mqtt.Client(client_id=client_id)
+    c.username_pw_set(settings.MQTT_USER_PUB, settings.MQTT_PASSWORD_PUB)
+    c.connect(settings.MQTT_HOST, settings.MQTT_PORT, keepalive=60)
+    c.loop_start()
+    time.sleep(1)  # dar tiempo a conectar
+    for topic in topics:
+        c.publish(topic, 'LED_ON')
+    time.sleep(0.5)
+    c.loop_stop()
+    c.disconnect()
 
 
 def get_topics_from_db():
@@ -70,10 +93,7 @@ class Command(BaseCommand):
                     self.stdout.write(self.style.WARNING('No hay estaciones en la BD. Publique algo desde el dispositivo primero.'))
                     return
                 self.stdout.write('Enviando LED_ON (--force) a: ' + ', '.join(topics))
-                from control import monitor
-                monitor.setup_mqtt()
-                for topic in topics:
-                    monitor.client.publish(topic, 'LED_ON')
+                send_led_on_to_topics(topics)
                 self.stdout.write(self.style.SUCCESS('LED_ON enviado. Revisa el NodeMCU.'))
             return
 
@@ -96,8 +116,6 @@ class Command(BaseCommand):
 
         if options['send']:
             self.stdout.write('')
-            from control import monitor
-            monitor.setup_mqtt()
             if options['force']:
                 topics = get_topics_from_db() if not aggregation else [
                     '{}/{}/{}/{}/in'.format(
@@ -108,9 +126,10 @@ class Command(BaseCommand):
                     )
                     for item in aggregation
                 ]
-                for topic in topics:
-                    monitor.client.publish(topic, 'LED_ON')
+                send_led_on_to_topics(topics)
                 self.stdout.write(self.style.SUCCESS('LED_ON enviado (--force) a {} tópico(s). Revisa el NodeMCU.'.format(len(topics))))
             else:
+                from control import monitor
+                monitor.setup_mqtt()
                 evaluate_led_event()
                 self.stdout.write(self.style.SUCCESS('Listo. Si había temp > umbral, se envió LED_ON. Revisa el NodeMCU (Serial/OLED/LED).'))
