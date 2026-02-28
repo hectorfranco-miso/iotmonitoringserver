@@ -1,6 +1,6 @@
-from datetime import datetime
 from . import utils
 import json
+from django.utils import timezone
 import ssl
 import paho.mqtt.client as mqtt
 from django.conf import settings
@@ -11,7 +11,7 @@ def on_message(client: mqtt.Client, userdata, message: mqtt.MQTTMessage):
     Función que se ejecuta cada que llega un mensaje al tópico.
     """
     try:
-        time = datetime.now()
+        time = timezone.now()
         payload = message.payload.decode("utf-8")
         print("Payload recibido:", payload)
 
