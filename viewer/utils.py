@@ -122,18 +122,26 @@ El template espera un contexto de este tipo:
             user = User.objects.get(username=userParam)
             print("CONTEXT: getting user db: ", user)
             stations = Station.objects.filter(user=user)
+            # Si el usuario no tiene estaciones pero es superuser, usar la primera estación disponible (ej. ironman)
+            if not stations.exists() and user.is_superuser:
+                first_station = Station.objects.filter(active=True).select_related('location').first()
+                if first_station:
+                    stations = Station.objects.filter(pk=first_station.pk)
             print("CONTEXT: getting stations db: ", stations)
-            station = stations[0] if len(stations) > 0 else None
+            station = stations.first()
             print("CONTEXT: getting first station: ", station)
             if station != None:
                 cityParam = station.location.city.name
                 stateParam = station.location.state.name
                 countryParam = station.location.country.name
+                data_user = station.user.username  # datos de quien tenga la estación (ej. ironman)
             else:
                 return context
+        else:
+            data_user = userParam
         print("CONTEXT: getting last week data and measurements")
         context["data"], context["measurements"] = get_last_week_data(
-            userParam, cityParam, stateParam, countryParam
+            data_user, cityParam, stateParam, countryParam
         )
         print(
             "CONTEXT: got last week data, now getting city, state, country: ",
