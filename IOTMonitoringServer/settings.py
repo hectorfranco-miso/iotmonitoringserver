@@ -29,8 +29,8 @@ DEBUG = True
 
 ALLOWED_HOSTS = [
     "localhost",
-    "54.173.214.232",
-    "ec2-54-173-214-232.compute-1.amazonaws.com",
+    "3.88.22.107",
+    "ec2-3-54-22-107.compute-1.amazonaws.com",
     "ip-10-0-18-78.ec2.internal",
     ".compute-1.amazonaws.com",  # cualquier EC2 en esa región por hostname
 ]
@@ -102,7 +102,7 @@ DATABASES = {
         "NAME": "iot_data",  # Nombre de la base de datos
         "USER": "dbadmin",  # Nombre de usuario
         "PASSWORD": "uniandesIOT1234*",  # Contraseña
-        "HOST": "54.237.90.95",  # Dirección IP de la base de datos
+        "HOST": "44.203.85.217",  # Dirección IP de la base de datos
         "PORT": "",  # Puerto de la base de datos
     }
 }
@@ -162,7 +162,7 @@ LOGOUT_REDIRECT_URL = '/login/'
 CRISPY_TEMPLATE_PACK = 'bootstrap4'
 
 # Dirección del bróker MQTT
-MQTT_HOST = "3.82.193.169"
+MQTT_HOST = "18.207.213.158"
 
 # Puerto del bróker MQTT
 MQTT_PORT = 8082
