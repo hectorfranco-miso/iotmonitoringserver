@@ -11,6 +11,28 @@ def get_measurements():
     return list(measurements)
 
 
+def get_data_user_for_location(city, state, country, request_user):
+    """
+    Devuelve el username a usar para get_last_week_data en esa ubicación.
+    Si el usuario tiene estación ahí, es él; si no pero es superuser, el dueño de cualquier estación ahí.
+    """
+    try:
+        cityO = City.objects.get(name=city)
+        stateO = State.objects.get(name=state)
+        countryO = Country.objects.get(name=country)
+        location = Location.objects.get(city=cityO, state=stateO, country=countryO)
+    except Exception:
+        return request_user.username
+    station = Station.objects.filter(user=request_user, location=location).first()
+    if station:
+        return request_user.username
+    if request_user.is_superuser:
+        any_station = Station.objects.filter(location=location, active=True).select_related('user').first()
+        if any_station:
+            return any_station.user.username
+    return request_user.username
+
+
 def get_last_week_data(user, city, state, country):
     result = {}
     start = datetime.now()
