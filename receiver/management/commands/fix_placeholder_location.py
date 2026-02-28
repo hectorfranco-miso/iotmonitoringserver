@@ -1,7 +1,7 @@
 """
-Corrige ubicaciones que tienen los placeholders "ciudad", "estado", "pais"
-y los reemplaza por "bogota", "cundinamarca", "colombia" (o los valores que indiques).
-Así el mapa histórico y los datos en tiempo real muestran el nombre real.
+Corrige ubicaciones que tienen los placeholders "ciudad", "estado", "pais":
+reasigna sus estaciones a la Location real (bogota, cundinamarca, colombia) y elimina la placeholder.
+Si la Location real no existe, la crea.
 
 Uso:
   python manage.py fix_placeholder_location
@@ -13,7 +13,7 @@ from receiver.utils import get_coordinates
 
 
 class Command(BaseCommand):
-    help = 'Reemplaza placeholders ciudad/estado/pais por nombres reales (ej. bogota, cundinamarca, colombia)'
+    help = 'Reasigna estaciones de ciudad/estado/pais a la ubicación real (ej. bogota, cundinamarca, colombia)'
 
     def add_arguments(self, parser):
         parser.add_argument('--city', default='bogota', help='Nombre de ciudad (default: bogota)')
@@ -25,14 +25,13 @@ class Command(BaseCommand):
         state_name = options['state']
         country_name = options['country']
 
-        # Ubicaciones que tienen los placeholders literales
-        locations = Location.objects.filter(
+        placeholder_locations = Location.objects.filter(
             city__name='ciudad',
             state__name='estado',
             country__name='pais'
         ).select_related('city', 'state', 'country')
 
-        if not locations.exists():
+        if not placeholder_locations.exists():
             self.stdout.write(self.style.WARNING('No hay ubicaciones con "ciudad, estado, pais". Nada que corregir.'))
             return
 
@@ -40,25 +39,44 @@ class Command(BaseCommand):
         state_o, _ = State.objects.get_or_create(name=state_name, defaults={})
         country_o, _ = Country.objects.get_or_create(name=country_name, defaults={})
 
-        updated = 0
-        for loc in locations:
-            loc.city = city_o
-            loc.state = state_o
-            loc.country = country_o
-            # Actualizar coordenadas para el mapa
+        # Location real (donde deben quedar las estaciones)
+        real_location, created = Location.objects.get_or_create(
+            city=city_o, state=state_o, country=country_o,
+            defaults={'active': True}
+        )
+        if created:
             try:
                 lat, lng = get_coordinates(city_name, state_name, country_name)
                 if lat and lng:
-                    loc.lat = lat
-                    loc.lng = lng
+                    real_location.lat = lat
+                    real_location.lng = lng
+                    real_location.save()
             except Exception as e:
                 self.stdout.write(self.style.WARNING('Coordenadas no actualizadas: {}'.format(e)))
-            loc.save()
-            updated += 1
-            self.stdout.write('Actualizada Location id={} -> {}, {}, {}'.format(
-                loc.pk, city_name, state_name, country_name))
+            self.stdout.write('Creada Location {}, {}, {}'.format(city_name, state_name, country_name))
 
-        # Opcional: borrar City/State/Country viejos si ya no los usa nadie
+        # Reasignar todas las estaciones de las placeholder locations a la Location real
+        from receiver.models import Station, Data
+        moved = 0
+        for loc in placeholder_locations:
+            stations = Station.objects.filter(location=loc)
+            for st in stations:
+                existing = Station.objects.filter(user=st.user, location=real_location).first()
+                if existing:
+                    # El usuario ya tiene estación en la Location real: mover los Data a esa estación y borrar la duplicada
+                    Data.objects.filter(station=st).update(station=existing)
+                    st.delete()
+                    self.stdout.write('Estación id={} (user={}) fusionada en estación id={}'.format(st.pk, st.user.username, existing.pk))
+                else:
+                    st.location = real_location
+                    st.save()
+                    self.stdout.write('Estación id={} (user={}) -> {}, {}, {}'.format(
+                        st.pk, st.user.username, city_name, state_name, country_name))
+                moved += 1
+            loc.delete()
+            self.stdout.write('Eliminada Location placeholder id={}'.format(loc.pk))
+
+        # Borrar City/State/Country placeholder si ya no los usa nadie
         old_city = City.objects.filter(name='ciudad').first()
         old_state = State.objects.filter(name='estado').first()
         old_country = Country.objects.filter(name='pais').first()
@@ -72,4 +90,4 @@ class Command(BaseCommand):
             old_country.delete()
             self.stdout.write('Eliminado Country "pais"')
 
-        self.stdout.write(self.style.SUCCESS('Listo. {} ubicación(es) corregida(s). Recarga el mapa histórico.'.format(updated)))
+        self.stdout.write(self.style.SUCCESS('Listo. {} estación(es) reasignada(s) a {}, {}, {}. Recarga el mapa.'.format(moved, city_name, state_name, country_name)))
